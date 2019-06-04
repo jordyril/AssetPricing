@@ -79,12 +79,14 @@ class BetaSKD(Coskewness):
         # fill up residual df
         for i in self.returns:
             eps[i] = self._reg_results[i].resid
+            
+        factor_eps = self.factor - self.factor.mean()
         
         #numerator of (11)
-        num = eps.multiply(self.factor**2, axis=0).mean() 
+        num = eps.multiply(factor_eps**2, axis=0).mean() 
         
-        #denominatorof (11)
-        den = np.sqrt((eps**2).mean()) * (self.factor**2).mean() 
+        #denominator of (11)
+        den = np.sqrt((eps**2).mean()) * (factor_eps**2).mean() 
         
         beta_skd = num / den  
         

@@ -13,33 +13,33 @@ import statsmodels.api as sm
 
 import matplotlib.pyplot as plt
 
-import os
-
-## Change local directory - Windows: change C:\ into C:/
-# directory work desktop
-directory = ("C:/Users\jrilla\OneDrive - bf.uzh.ch"
-             "\Courses\Asset pricing\Project")
-
-# directory home laptop
-#directory = ("D:/OneDrive - bf.uzh.ch\Courses"
-#             "\Asset pricing\Project")
-
-os.chdir(directory)
+#import os
+#
+### Change local directory - Windows: change C:\ into C:/
+## directory work desktop
+#directory = ("C:/Users\jrilla\OneDrive - bf.uzh.ch"
+#             "\Courses\Asset pricing\Project\AssetPricing")
+#
+### directory home laptop
+###directory = ("D:/OneDrive - bf.uzh.ch\Courses"
+###             "\Asset pricing\Project")
+##
+#os.chdir(directory)
 
 
 # Own files
 import latexclasses as ltx
-import functions_support as sf
 
 from Hedgeportfolio_construction import hedgeportfolios
 from SkewnessClasses import (BetaSKD, BetaLongShortPort, 
                              BetaNegSkewPort, BetaSquared)
 
 from DataImport import (factors, portfolio_dic, returns)
+from DataProcessor import DataProcessor
 
 from FactorModel import FamaFrench3, FF3F1, CAPM, CAPMF1
 
-from functions_support import title
+from functions_support import title, OLS, subtitle
 
 #from VCVClass import Bartlett
 # =============================================================================
@@ -49,9 +49,12 @@ S_pl = hedgeportfolios['High']
 S_min = hedgeportfolios['Low']
 LS_S = hedgeportfolios['LH-LS']
 
+dataprocessor = DataProcessor()
+
 # =============================================================================
 #%% TIME SERIES REGRESSIONS - III.A
 # =============================================================================
+title('Time-Series')
 portfolio_names = pd.Series(list(portfolio_dic.keys()), name='Portfolio group')
 
 ts_results_df = pd.DataFrame(index=portfolio_names, 
@@ -60,18 +63,24 @@ ts_results_df = pd.DataFrame(index=portfolio_names,
 TS_regression_results = {}
 #ts_res_dic = {}
 # 3 FAMA-FRENCH factors
-ff3 = factors[['mkt','smb', 'hml']]
+ff3_list = ['mkt','smb', 'hml']
+ff3 = factors[ff3_list]
 
 # 3 FF + factor mimicking portfolio for skewness
 ff3s1 = ff3.copy()
 ff3s1['S_min'] = S_min
 
+ff3s = ff3.copy()
+ff3s['s_min'] = S_min
+ff3s['sks'] = LS_S
+
+
 # Loop for all portfolios
 title('TIME-SERIES REGRESSIONS')
-for port in portfolio_dic:
+for port in portfolio_names[:-1]:
     print(port)
-    FF3 = FamaFrench3(portfolio_dic[port], ff3)
-    FF3S1 = FF3F1(portfolio_dic[port], ff3s1)
+    FF3 = FamaFrench3(portfolio_dic[port], ff3).timeseries_regression()
+    FF3S1 = FF3F1(portfolio_dic[port], ff3s1).timeseries_regression()
     
     TS_regression_results[port] = {}
     TS_regression_results[port]['model'] = {}
@@ -94,8 +103,7 @@ for port in portfolio_dic:
             TS_regression_results[port]['ts'][fname][n] = v
 #            ts_res_dic[port][fname][n] = v
         
-        # for individual assets do not bother
-        
+        # for individual assets do not bother        
         print('F', TS_regression_results[port]['ts'][fname]['F-test'])
         print('p', TS_regression_results[port]['ts'][fname]['p-value'])
     print()
@@ -107,9 +115,6 @@ for port in portfolio_dic:
 #   
 #    TS_regression_results[port]['fm']['corr'] = corr
     
-
-#TODO
-# FILL TABLES  
 # =============================================================================
 #%% FAMA-MCBETH PROCEDURE III.A - correlations (table II)
 # =============================================================================
@@ -120,7 +125,7 @@ fm_window_os = len(factors) - fm_window_is
 fm_res = {}
 fm_res['corr'] = pd.DataFrame(columns=['corr'], index=portfolio_names, 
                               dtype=float)
-for port in portfolio_dic:
+for port in portfolio_names[:-1]:
     print(port)
     fm_res[port] = {}
     fm_res[port]['lambdas'] = pd.DataFrame(index=portfolio_dic[port]
@@ -129,29 +134,24 @@ for port in portfolio_dic:
     for t in range(fm_window_os):
         ret = portfolio_dic[port].iloc[t: t + fm_window_is]
         f = ff3.iloc[t: t + fm_window_is]
-        fs = ff3s1.iloc[t: t + fm_window_is]
     
         m = FamaFrench3(ret, f) 
         
-        m.timeseries_regression(True)   
+        m.timeseries_regression()   
             
         a = m.betas[:, :-m.K].T
-
-        a1 = sm.add_constant(a)
-
+        
         b = pd.DataFrame(portfolio_dic[port].iloc[fm_window_is + t])
 
-        param = la.lstsq(a1, b, rcond=None)[0]
+        reg_res = OLS(b, a)
+        param = reg_res.param()
     
         fm_res[port]['lambdas'].iloc[t] = param[:, 0]
         
         corr = np.correlate(fm_res[port]['lambdas'].iloc[:, 0], 
                             S_min.iloc[fm_window_is:])[0]
     print(corr, '\n')
-    
-        
-    fm_res['corr'].loc[port] = corr
-    
+
         
 #print(fm_res['corr'])
    
@@ -200,61 +200,272 @@ for port in portfolio_dic:
 # =============================================================================
 #%% CROSS SECTION - III.B
 # =============================================================================
-ind = portfolio_dic['Industry']
-#TODO Full-information maximum likelihood (FIML)
+title('FAMA-MCBETH - R')
+fm_window_is = 60
+fm_window_os = len(factors) - fm_window_is
+res_dic = {}
 
+model_list_names = ['CAPM' , 'CAPM, S-', 'CAPM, sks', 'FF3', 'FF3, S-', 'FF3, sks']
 
-
-
-
-
-
-
-
-
-
-#%%   
-
-#re = returns.dropna(axis=1)
-#test = FamaFrench3(re, ff3)
-#
-#
-#c = test.Fama_Mcbeth(intercept=True).iloc[:, 0]
-#np.correlate(c, S_min)
-
-               
-#ts_res_dic                     
+#R_df = pd.DataFrame(index=portfolio_dic[port].iloc[fm_window_is:].index, columns=model_list_names)
+for port in portfolio_names[:-1]:
+    res_dic[port] = pd.DataFrame(index=portfolio_dic[port].iloc[fm_window_is:].index, columns=model_list_names)
+    for t in range(fm_window_os):
+        ret = portfolio_dic[port].iloc[t: t + fm_window_is]
+        fac = ff3s.iloc[t: t + fm_window_is]
+        
+        model_list = [CAPM(ret, fac[['mkt']]), 
+                      CAPMF1(ret, fac[['mkt' , 's_min']]),
+                      CAPMF1(ret, fac[['mkt' , 'sks']]), 
+                      FamaFrench3(ret, fac[['mkt' , 'smb', 'hml']]),
+                      FF3F1(ret, fac[['mkt' , 'smb', 'hml', 's_min']]),
+                      FF3F1(ret, fac[['mkt' , 'smb', 'hml', 'sks']])
+                      ]
+        # R
+        for model, name in zip(model_list, model_list_names) : 
     
-#FF3.betas
-#FF3S1.betas
-#a = FF3.estimates_df()
-#b = FF3.standard_errrors(return_df=True)
-#pd.DataFrame(a.values / b.values)
-#
-#FF3.t_stats(True)
-#FF3
-#FF3S1.t_stats(True).iloc[-4, :-4]
+            ts_res = model.timeseries_regression()
+        
+            a = ts_res.betas[:, :-ts_res.K].T
+            b = pd.DataFrame(portfolio_dic[port].iloc[fm_window_is + t])
+            
+            # mine
+            reg_res = OLS(b, a, True)
+            adjR2 = reg_res.adj_R_squared()
+            res_dic[port][name].iloc[t] = adjR2[0]
+            
+    print(port)
+    print(res_dic[port].mean(), '\n')
+
+
+
+    
+# =============================================================================
+#%% full information maximum likelihood (1-14) - table III (1)
+#TODO
+# =============================================================================
+title('FIML')
+fiml_cr_res = {}
+fiml_r_port = pd.DataFrame(index=portfolio_names[:-1], columns=model_list_names)
+fiml_port_rmse = {}
+for port in portfolio_names[:-1]:
+    fiml_port_rmse[port] = pd.DataFrame(columns=model_list_names, index=portfolio_dic[port].columns)
+    fiml_cr_res[port] = {}
+    # estimate betas and mus using all returns
+    mu_hat = portfolio_dic[port].mean()
+    ret = portfolio_dic[port]
+    model_list = [CAPM(ret, ff3s[['mkt']]), 
+                  CAPMF1(ret, ff3s[['mkt' , 's_min']]),
+                  CAPMF1(ret, ff3s[['mkt' , 'sks']]), 
+                  FamaFrench3(ret, ff3s[['mkt' , 'smb', 'hml']]),
+                  FF3F1(ret, ff3s[['mkt' , 'smb', 'hml', 's_min']]),
+                  FF3F1(ret, ff3s[['mkt' , 'smb', 'hml', 'sks']])]
+     # R
+
+    for model, name in zip(model_list, model_list_names):
+        reg_res = model.timeseries_regression()
+        betas = reg_res.betas[:, :-reg_res.K].T
+    
+        res = OLS(mu_hat, betas)
+        fiml_cr_res[port][name] = res
+        fiml_port_rmse[port][name] = res.residuals()
+        fiml_r_port[name][port] = res.adj_R_squared()[0]
+
+
+print('Constant beta estimates \n\n', fiml_r_port.T, '\n')
+print('RMSE \n')
+for port in portfolio_names[:-1]:
+    print(port)
+    print(np.sqrt(np.mean(fiml_port_rmse[port]**2)), ' \n')
+    
+from linearmodels.asset_pricing import TradedFactorModel
+for port in portfolio_names[:-1]:
+    for fac in [ff3s[['mkt']], ff3s[['mkt' , 's_min']], ff3s[['mkt' , 'sks']],
+                ff3s[['mkt' , 'smb', 'hml']]
+                , ff3s[['mkt' , 'smb', 'hml', 's_min']], ff3s[['mkt' , 'smb', 'hml', 'sks']]]:
+        mod = TradedFactorModel(portfolio_dic[port], fac)
+        res = mod.fit(cov_type='kernel')
+        print(res)
+        print('betas \n', res.betas)
+
 
 
 # =============================================================================
-# Cross sectional
+#%% Individual assets
 # =============================================================================
-#import statsmodels.api as sm
+title('Individual assets')
+ts_estimates_df = pd.DataFrame(columns=returns.columns)
+samples = {}
+#samples['full'] = returns
+
+ts_betas = {}
+ts_stdv = {}
+
+returns
+
+# Sample division
+for l, u, name in zip([0, 24, 60, 90, 0], [24, 60, 90, len(returns) + 1, len(returns) + 1],
+                      ['T_24', '24_T_60', '60_T_90', '90_T', 'full']):
+    print(name)
+    test = ((returns.notna().sum()  >= l) & (returns.notna().sum()  < u))
+    test2 = test[test == True]
+    permnos = list(test2.index)
+    samples[name] = returns[permnos]
+    print('number of assets:', len(permnos))
+    ts_betas[name] = {}
+    ts_stdv[name] = {}
+    for mname in ['FF3', 'FF3, S-', 'FF3, sks']:
+        ts_betas[name][mname] = pd.DataFrame(columns=permnos)
+        ts_stdv[name][mname] = pd.DataFrame(columns=permnos, index=['stdv'], dtype=float)
+   
+    print()
+
+for s in  ['T_24', '24_T_60', '60_T_90', '90_T', 'full']:
+    title(s)
+    print('Total:', samples[s].shape[1])
+    i = 1
+    for r in samples[s]:
+        ret = samples[s][r].dropna()
+        fac = ff3s.loc[ret.index]
+        
+        for model, mname in zip([FamaFrench3(ret, fac[ff3_list]),
+                                 FF3F1(ret, fac[ff3_list + ['s_min']]),
+                                 FF3F1(ret, fac[ff3_list + ['sks']])],
+                                ['FF3', 'FF3, S-', 'FF3, sks']):
+            reg_res = model.timeseries_regression()
+            ts_betas[s][mname][r] = reg_res.estimates_df().loc[r]
+            ts_stdv[s][mname][r]['stdv'] = reg_res.residuals[r].std()
+        print(i, end="")
+        i = i + 1
+        
+        
+dataprocessor.save_to_pickle('ts_betasV2', ts_betas)
+dataprocessor.save_to_pickle('ts_stdvV2', ts_stdv)
+  
+ts_betas1 = dataprocessor.open_from_pickle('ts_betasV2')
+ts_stdv1 = dataprocessor.open_from_pickle('ts_stdvV2')
+
+wls_res = {}
+
+for model in ['FF3', 'FF3, S-', 'FF3, sks']:
+    wls_res[model] = {}
+    for s in  ['T_24', '24_T_60', '60_T_90', '90_T', 'full']:
+        X = ts_betas1[s][model].iloc[1:, :].T
+        y = samples[s].mean() * 100
+
+        w = pd.DataFrame(1 / ts_stdv1[s][model].T, dtype=float)
+
+        test = sm.WLS(y, X, weights=w.values.T[0])
+        res = test.fit()
+        wls_res[model][s] = res
+
+for model in ['FF3', 'FF3, S-', 'FF3, sks']:
+    print(model)
+    for s in  ['T_24', '24_T_60', '60_T_90', '90_T', 'full']:
+        print(s)
+#        print(wls_res[model][s].params)
+#        print(wls_res[model][s].bse)
+#        print()
+        print(wls_res[model][s].summary())
+        wls_res[model][s].summary()
+
+
+
 #
-#FF3.Fama_Mcbeth(intercept=True).iloc[:, 0]
-#FF3._lambdahat_str
+#for i in returns:
+#    ret = returns[i].dropna()
+#    fac = ff3s.loc[ret.index]
+#    
+#    model = FF3F1(ret, fac[ff3_list + ['sks']])
+#    reg_res = model.timeseries_regression()
+#    ts_estimates_df[i] = reg_res.estimates_df().loc[i]
+##dataprocessor.save_to_pickle('ts_indv_estimates', ts_estimates_df)
+##ts_estimates_df = dataprocessor.open_from_pickle('ts_indv_estimates')
+##print('Time-series-results \n', ts_estimates_df.T.mean())
+##print('Correlation\n', ts_estimates_df.T.corr())
 #
-#a = FF3.betas[:, :-FF3.K].T
-#a.shape
-#a1 = sm.add_constant(a)
-#a1.shape
+#full_sample = returns.iloc[:, :10].copy()
+#full_sample
 #
-#b = FF3.assets.iloc[:, :-FF3.K].T
-#b.shape
+#for i in full_sample:
+#    ret = returns[i].dropna()
+#    fac = ff3s.loc[ret.index]
+#    
+#    model = FF3F1(ret, fac[ff3_list + ['sks']])
+#    reg_res = model.timeseries_regression()
+#    ts_stdv['full'][i]['stdv'] = reg_res.residuals[i].std()
 #
-#param = la.lstsq(a, b, rcond=None)[0]
-#param.shape
 #
-#alpha = b.T - param.T @ a.T 
+
+
+
+
+
+
+
+
+
+
+
+
+   
+
+#from linearmodels.asset_pricing import LinearFactorModel
+#LinearFactorModel(full_sample, ff3s[ff3_list])
+
+
+# =============================================================================
+#%% test previous results 
+# =============================================================================
+"""
+from linearmodels.datasets import french
+data = french.load()
+
+data = data.set_index('dates')['07-1963':'12-1993']
+
+# Time series test
+from linearmodels.asset_pricing import TradedFactorModel
+portfolios = data[['S1V1','S1V3','S1V5','S3V1','S3V3','S3V5','S5V1','S5V3','S5V5']]
+factors = data[['MktRF']]
+mod = TradedFactorModel(portfolios)
+res = mod.fit(cov_type='kernel')
+print(res)
+print('betas \n', res.betas)
+
+res.full_summary
+
+
+mine = CAPM(portfolios, factors)
+mine_res = mine.timeseries_regression()
+print('my betas', mine_res.betas)
+
+
+# Cross-section (Fama-Mcbeth)
+factors = data[['MktRF', 'SMB', 'HML']]
+portfolios = data[['S1V1','S1V3','S1V5','S5V1','S5V3','S5V5']].copy()
+portfolios.loc[:,:] = portfolios.values - data[['RF']].values
+
+from linearmodels.asset_pricing import LinearFactorModel
+mod = LinearFactorModel(portfolios, factors)
+res = mod.fit(cov_type='kernel')
+print(res, '\n')
+
+test = FamaFrench3(portfolios, factors)
+
+print('my est', test.Fama_Mcbeth().mean())
+
+
+# GMM
+from linearmodels.asset_pricing import LinearFactorModelGMM
+mod = LinearFactorModelGMM(portfolios, factors)
+res = mod.fit()
+print(res)
+
+"""
+
+
+
+
+
 
 

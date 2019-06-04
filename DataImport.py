@@ -32,7 +32,6 @@ from DataProcessor import DataProcessor
 from Settings import general_settings, data_suffix
 from functions_support import title
 
-
 # =============================================================================
 #%% DATA IMPORT 
 # =============================================================================
@@ -50,35 +49,7 @@ daterange = pd.date_range(start, end, closed='right', freq='M')
 
 # Inititalize DataProcessor object
 dataprocessor = DataProcessor()
-
-#download data
-if new_download:
-
-    # Connect to wdrs
-    db = wrds.Connection(wrds_username='jordyril')
-    
-    #lists all libraries
-    db.list_libraries() 
-    
-    # lists all tables withing library
-    db.list_tables('ff')
-    
-    # describes table within library
-    db.describe_table(library="crsp", table='msi')
-    
-    # describes table within library
-    #data = db.get_table(library='crsp', table='msf', obs=10)
-
-
-    columns = 'permno, date, prc, ret, shrout'
-    database = 'crsp.msf'
-    crsp = db.raw_sql('select ' + columns + ' from ' + database,
-                      date_cols=['date'])
-    
-    dataprocessor.save_to_pickle('crsp_msf' + data_suffix, crsp)
-    print('Downloading CRSP_msf: done')
-    
-else:
+   
 #    crsp = dataprocessor.open_from_pickle('crsp_msf' + data_suffix)
     crsp = dataprocessor.open_from_pickle('crsp_msf_07011930_12312018')
    
@@ -248,10 +219,16 @@ if log_returns:
     mom_port = np.log(mom_port + 1)
 
 
+# Filter returns for missing values
+returns = returns.dropna(axis=1, thresh=6)
+
+#returns = returns.dropna(axis=1)  
+    
+    
 # Create dictionary with all portfoliogroups
 portfolio_dic = {}
 for port, port_name in zip([size_bm_port, size_port, mom_port, industry_port, 
-                            returns.dropna(axis=1)],
+                            returns],
                           ['Size and B/M', 'Size', 'Momentum', 'Industry', 
                            'Individual']):
     portfolio_dic[port_name] = port

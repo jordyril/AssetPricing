@@ -21,7 +21,6 @@ class DataCleaner(object):
         return in_sample, out_sample
     
 class DropAllNan(DataCleaner):
-    
     def __call__(self, full_sample, axis=1):
         cleaned_sample = full_sample.dropna(axis=1)
         return cleaned_sample

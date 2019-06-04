@@ -31,11 +31,32 @@ class Latex(object):
 # =============================================================================
 # LATEX TABLE
 # =============================================================================
-class LatexTable(Latex):
+class LatexFloats(Latex):
+    def _caption_label(self, file, caption, label):
+        file.write('\\caption{' + caption + '}\n')
+        file.write('\\label{' + self._prefixlabel + label + '}\n')
+        return None
+    
+    def _begin_object(self, input_tex):
+        input_tex.write('\\begin{' + self._object + '}[H]\n')
+        input_tex.write('\\center\n')  
+    
+    def _end_object(self, input_tex):
+        input_tex.write('\\end{' + self._object + '}')
+        
+    def _print_latex_input(self, filename):
+        print('\n% Latex ' + self._object + ' input: ' + filename + ' %')
+        print('\\input{Inputs/input_' + filename + '}')
+        return None
+        
+    
+class LatexTable(LatexFloats):
     def __init__(self):
-        Latex.__init__(self)
+        LatexFloats.__init__(self)
         
         self._prefix = 'table_'
+        self._prefixlabel = 'tbl: '
+        self._object = 'table'
         
         if not os.path.exists('Inputs'):
                     os.makedirs('Inputs')
@@ -97,25 +118,59 @@ class LatexTable(Latex):
         return None
     
     def __call__(self, table, name, caption, label=None, rounding=2,
-                      above=True, escape_math=True):
-        columns = table.shape[1]
+                      above=True, **latex_kwargs):
+        """
+        see:
+        https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_latex.html
+        for the possiblew kwargs
+        """
+        try:
+            to_latex_kwargs = latex_kwargs['to_latex']
+            
+        except KeyError:
+            to_latex_kwargs = {}
+            
+        try:
+            latex_input_kwargs = latex_kwargs['input']
+            
+        except KeyError:
+            latex_input_kwargs = {}
         
-        #prepare standard format
-        col_form = 'l|' + columns * 'r'
-        fl_form = '%.' + str(rounding) + 'f'
+#        columns = table.shape[1]
+        # Escape math
+        try:
+            to_latex_kwargs['escape']
+        except KeyError:
+            to_latex_kwargs['escape'] = False
         
-         # Transfer to latex file
-        table.to_latex(self._path() + name + self._extension,
-                     float_format=fl_form,
-                     column_format=col_form,
-                     escape=escape_math)
+        self.create_tabular_file(table, name, rounding, **to_latex_kwargs)
         
-        self.create_latex_input(name, caption, label, above)
+
+        
+#        ## Standard formats
+#        # columns
+#        try:
+#            to_latex_kwargs['column_format']
+#        except KeyError:
+#            to_latex_kwargs['column_format'] = 'l|' + columns * 'r'
+#            
+#        # floats
+#        try:
+#            to_latex_kwargs['float_format']
+#        except KeyError:
+#            to_latex_kwargs['float_format'] = '%.' + str(rounding) + 'f'
+#        
+#       
+#         # Transfer to latex file
+#        table.to_latex(self._path() + name + self._extension, **to_latex_kwargs)
+       
+        self.create_latex_input(name, caption, label, above, **latex_input_kwargs)
         
         return None
-        
     
-    def create_latex_input(self, filename, caption, label=None, above=True):
+    
+    def create_latex_input(self, filename, caption, label=None, above=True, 
+                           adjustbox=('\\textwidth', '0.75\\textheight')):
         """
         Creates input line to be copied into latex s.t. tables and figures 
         will automatically be imported in latex with given title and label
@@ -123,36 +178,38 @@ class LatexTable(Latex):
         # creating label
         if label is None:
             label = filename
+            
         # creating + opening the file
         input_tex = open(os.path.join('Inputs', 'input_' 
                                       + filename 
                                       + self._extension), "w")
         
         # begin object
-        input_tex.write('\\begin{table}[H]\n')
-        input_tex.write('\\center\n')  
+        self._begin_object(input_tex)
         
         # Caption and lable above
-        if above:
-            input_tex.write('\\caption{' + caption + '}\n')
-            input_tex.write('\\label{tbl: ' + label + '}\n')
+        if above: self._caption_label(input_tex, caption, label)
+        
+        # adjustbox print - begin
+        input_tex.write('\\adjustbox{max totalsize={' + adjustbox[0] + '}{' + adjustbox[1] +'}}{ \n')
         
         # import    
         input_tex.write('\\input{' + self._path() + filename + '}\n')
             
+        # adjustbox print - end
+        input_tex.write('}\n')
+        
         # Caption and lable bellow
-        if not above:
-            input_tex.write('\\caption{' + caption + '}\n')
-            input_tex.write('\\label{tbl: ' + label + '}\n')
+        if not above: self._caption_label(input_tex, caption, label)
         
         # end object
-        input_tex.write('\\end{table}')
+        self._end_object(input_tex)
+#        input_tex.write('\\end{' + self._object + '}')
         
         # closing the file
         input_tex.close()
         
-        print('\n% Latex table input: ' + filename + ' %')
-        print('\\input{Inputs/input_' + filename + '}')
+        self._print_latex_input(filename)
         return None
     
     def subtables(self, filename, subtables, caption, subcaptions,
@@ -170,38 +227,39 @@ class LatexTable(Latex):
             sublabels = subtables
             
         # begin object
-        input_tex.write('\\begin{table}[H]\n')
+        self._begin_object(input_tex)
+#        input_tex.write('\\begin{table}[H]\n')
         
         # Caption and lable above
-        if above:
-            input_tex.write('\\caption{' + caption + '}\n')
-            input_tex.write('\\label{tbl: ' + label + '}\n')        
-        
+        if above: self._caption_label(input_tex, caption, label)
+#            input_tex.write('\\caption{' + caption + '}\n')
+#            input_tex.write('\\label{tbl: ' + label + '}\n')        
+#        
         # loop over tables
         for tbl, cap, lbl in zip(subtables, subcaptions, sublabels):
             input_tex.write('\\begin{subtable}[t]{' + str(lw) + 
                             '\linewidth}\n')
             
             # Caption and lable above
-            if subabove:
-                input_tex.write('\\caption{' + cap + '}\n')
-                input_tex.write('\\label{tbl: ' + lbl + '}\n')
-#                input_tex.write('\vspace{0.5cm}\n')
+            if subabove: self._caption_label(input_tex, cap, lbl)
+#                input_tex.write('\\caption{' + cap + '}\n')
+#                input_tex.write('\\label{tbl: ' + lbl + '}\n')
+##                input_tex.write('\vspace{0.5cm}\n')
             
             input_tex.write('\\input{' + self._path() + tbl + '}\n')
             
              # Caption and lable bellow
-            if not subabove:
-                input_tex.write('\\caption{' + cap + '}\n')
-                input_tex.write('\\label{tbl: ' + lbl + '}\n')
+            if not subabove: self._caption_label(input_tex, cap, lbl)
+#                input_tex.write('\\caption{' + cap + '}\n')
+#                input_tex.write('\\label{tbl: ' + lbl + '}\n')
 #                input_tex.write('\vspace{0.5cm}\n')
             
             input_tex.write('\\end{subtable}\\hfill\n')
         
         # Caption and lable bellow
-        if not above:
-            input_tex.write('\\caption{' + caption + '}\n')
-            input_tex.write('\\label{tbl: ' + label + '}\n')
+        if not above: self._caption_label(input_tex, caption, label)
+#            input_tex.write('\\caption{' + caption + '}\n')
+#            input_tex.write('\\label{tbl: ' + label + '}\n')
         
         # end object
         input_tex.write('\\end{table}')
@@ -213,16 +271,60 @@ class LatexTable(Latex):
         print('\\input{Inputs/input_' + filename + '}')
         
         return None
+    
+    def create_tabular_file(self, table, name, rounding=2, **to_latex_kwargs):
+        #columns
+        columns = table.shape[1]
+        
+        # Escape math
+        try:
+            to_latex_kwargs['escape']
+        except KeyError:
+            to_latex_kwargs['escape'] = True
+        
+        ## Standard formats
+        # columns
+        try:
+            to_latex_kwargs['column_format']
+        except KeyError:
+            to_latex_kwargs['column_format'] = 'l|' + columns * 'r'
             
+        # floats
+        try:
+            to_latex_kwargs['float_format']
+        except KeyError:
+            to_latex_kwargs['float_format'] = '%.' + str(rounding) + 'f'
+        
+        # Transfer to latex file
+        table.to_latex(self._path() + name + self._extension, **to_latex_kwargs)
+        
+    def _print_tabular_input(self, name):
+        print('\n% Latex tabular input: ' + name + ' %')
+        print('\\input{Tables/' + name + '}')
+        return None
+    
+    def create_tabular_input(self, table, name, rounding=2, **to_latex_kwargs):
+        self.create_tabular_file(table, name, rounding, **to_latex_kwargs)
+        self._print_tabular_input(name)
+        return None
+        
+        
+    
+           
 # =============================================================================
 # LATEX FIGURE
 # =============================================================================
-class LatexFigure(Latex):
-    def __init__(self):
+class LatexFigure(LatexFloats):
+    def __init__(self, extension='jpg'):
         Latex.__init__(self)
         
         if not os.path.exists('Inputs'):
                     os.makedirs('Inputs')
+        
+        self._prefixlabel = 'fig: '
+        self._object = 'figure'
+        self._figextension = '.' + extension
+
     
     def __str__(self):
         return 'Figure'
@@ -241,33 +343,36 @@ class LatexFigure(Latex):
                          "w")
 
         # begin object
-        input_tex.write('\\begin{figure}[H]\n')
-        input_tex.write('\\center\n')  
+        self._begin_object(input_tex)
+#        input_tex.write('\\begin{figure}[H]\n')
+#        input_tex.write('\\center\n')  
         
         # Caption and lable above
-        if above:
-            input_tex.write('\\caption{' + caption + '}\n')
-            input_tex.write('\\label{fig: ' + label + '}\n')
+        if above: self._caption_label(input_tex, caption, label)
+#            input_tex.write('\\caption{' + caption + '}\n')
+#            input_tex.write('\\label{fig: ' + label + '}\n')
         
         
         # Import    
         input_tex.write('\\includegraphics[scale=0.8]{' 
                         + self._path()
-                        + filename + '.jpg}\n')
+                        + filename + self._figextension + '}\n')
         
         # Caption and lable bellow
-        if not above:
-            input_tex.write('\\caption{' + caption + '}\n')
-            input_tex.write('\\label{fig: ' + label + '}\n')
+        if not above: self._caption_label(input_tex, caption, label)
+#            input_tex.write('\\caption{' + caption + '}\n')
+#            input_tex.write('\\label{fig: ' + label + '}\n')
         
         # end object
-        input_tex.write('\\end{figure}')
+        self._end_object(input_tex)
+#        input_tex.write('\\end{figure}')
         
         # closing the file
         input_tex.close()
         
-        print('\n% Latex Figure input: ' + filename + ' %')
-        print('\\input{Inputs/input_' + filename + '}')
+        self._print_latex_input(filename)
+#        print('\n% Latex Figure input: ' + filename + ' %')
+#        print('\\input{Inputs/input_' + filename + '}')
         return None
     
     def subfigure(self, filename, subfigures, caption, subcaptions,
@@ -287,13 +392,14 @@ class LatexFigure(Latex):
             sublabels = subfigures
             
         # begin object
-        input_tex.write('\\begin{figure}[H]\n')
-        input_tex.write('\\centering\n')  
+        self._begin_object(input_tex)
+#        input_tex.write('\\begin{figure}[H]\n')
+#        input_tex.write('\\centering\n')  
         
         # Caption and lable above
-        if above:
-            input_tex.write('\\caption{' + caption + '}\n')
-            input_tex.write('\\label{fig: ' + label + '}\n')        
+        if above: self._caption_label(input_tex, caption, label)
+#            input_tex.write('\\caption{' + caption + '}\n')
+#            input_tex.write('\\label{fig: ' + label + '}\n')        
         
         # loop over tables
         for fig, cap, lbl in zip(subfigures, subcaptions, sublabels):
@@ -302,35 +408,37 @@ class LatexFigure(Latex):
                             + '\linewidth}\n')
             
             # Caption and lable above
-            if subabove:
-                input_tex.write('\\caption{' + cap + '}\n')
-                input_tex.write('\\label{fig: ' + lbl + '}\n')
+            if subabove: self._caption_label(input_tex, cap, lbl)
+#                input_tex.write('\\caption{' + cap + '}\n')
+#                input_tex.write('\\label{fig: ' + lbl + '}\n')
 #                input_tex.write('\vspace{0.5cm}\n')
             
             input_tex.write('\includegraphics[width=\\textwidth]{' 
-                            + self._path() + fig + '.jpg}\n')
+                            + self._path() + fig + self._figextension + '}\n')
             
              # Caption and lable bellow
-            if not subabove:
-                input_tex.write('\\caption{' + cap + '}\n')
-                input_tex.write('\\label{fig: ' + lbl + '}\n')
+            if not subabove: self._caption_label(input_tex, cap, lbl)
+#                input_tex.write('\\caption{' + cap + '}\n')
+#                input_tex.write('\\label{fig: ' + lbl + '}\n')
 #                input_tex.write('\vspace{0.5cm}\n')
             
             input_tex.write('\\end{subfigure}\\hfill\n')
         
         # Caption and lable bellow
-        if not above:
-            input_tex.write('\\caption{' + caption + '}\n')
-            input_tex.write('\\label{fig: ' + label + '}\n')
-        
+        if not above: self._caption_label(input_tex, caption, label)
+#            input_tex.write('\\caption{' + caption + '}\n')
+#            input_tex.write('\\label{fig: ' + label + '}\n')
+#        
         # end object
-        input_tex.write('\\end{figure}')
+        self._end_object(input_tex)
+#        input_tex.write('\\end{figure}')
         
         # closing the file
         input_tex.close()
         
-        print('\n% Latex table input: ' + filename + ' %')
-        print('\\input{Inputs/input_' + filename + '}')
+        self._print_latex_input(filename)
+#        print('\n% Latex table input: ' + filename + ' %')
+#        print('\\input{Inputs/input_' + filename + '}')
         
         return None
 
@@ -340,6 +448,8 @@ class LatexFigure(Latex):
 class LatexValue(Latex):
     def __init__(self):
         Latex.__init__(self)
+        
+        self._object = 'value'
         
     def __str__(self):
         return 'Value'

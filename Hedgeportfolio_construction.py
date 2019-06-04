@@ -10,10 +10,10 @@ Created on Mon Apr 15 14:09:15 2019
 #import os
 
 ### Change local directory - Windows: change C:\ into C:/
-## directory work desktop
+# directory work desktop
 #directory = ("C:/Users\jrilla\OneDrive - bf.uzh.ch"
 #             "\Courses\Asset pricing\Project")
-#
+
 ## directory home laptop
 ##directory = ("D:/OneDrive - bf.uzh.ch\Courses"
 ##             "\Asset pricing\Project")
